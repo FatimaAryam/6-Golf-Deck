@@ -5,7 +5,6 @@ from PIL import Image, ImageTk
 import pickle  # For sending/receiving objects
 import os
 
-# Function to load card images
 def load_card_images(folder):
     card_images = {}
     size = (80, 112)
@@ -39,7 +38,6 @@ class CardGameClient:
         self.temp_drawn_card = None
         self.create_interface()
         
-        # Start a thread to listen for server messages
         threading.Thread(target=self.receive_game_state, daemon=True).start()
         self.root.mainloop()
 
@@ -57,6 +55,9 @@ class CardGameClient:
         self.info_label.pack()
 
     def update_interface(self, game_state):
+        self.game_state = game_state
+
+        # Check if the game is over and display the result
         if game_state.get('game_over', False):
             self.info_label.config(text=f"Game Over! {game_state['winner']}\nPlayer 1 score: {game_state['player1_score']}, Player 2 score: {game_state['player2_score']}")
             self.draw_button.config(state=tk.DISABLED)
@@ -66,25 +67,24 @@ class CardGameClient:
         if 'current_player' in game_state:
             if self.player_number == game_state['current_player']:
                 self.info_label.config(text=f"Your turn (Player {self.player_number})")
+                self.draw_button.config(state=tk.NORMAL)
+                self.discard_button.config(state=tk.NORMAL)
             else:
                 self.info_label.config(text=f"Waiting for Player {game_state['current_player']}'s turn")
-        else:
-            self.info_label.config(text="Waiting for the next update from the server...")
+                self.draw_button.config(state=tk.DISABLED)
+                self.discard_button.config(state=tk.DISABLED)
 
         for label in self.card_labels:
             label.destroy()
         self.card_labels = []
 
-        player_cards = game_state.get('player1_cards', []) if self.player_number == 1 else game_state.get('player2_cards', [])
+        player_cards = self.get_player_cards()
         
+        # Display all player cards
         for idx, card in enumerate(player_cards):
-            card_image = self.card_images[card] if card != "back" else self.card_images['back']
+            card_image = self.card_images[card]
             label = tk.Label(self.player_frame, image=card_image)
             label.image = card_image
-            
-            if self.player_number == game_state['current_player'] and self.temp_drawn_card and card == "back":
-                label.bind("<Button-1>", lambda event, index=idx: self.place_drawn_card(index))
-            
             label.pack(side=tk.LEFT)
             self.card_labels.append(label)
 
@@ -94,16 +94,31 @@ class CardGameClient:
         self.info_label.config(text="Card drawn, waiting for server update...")
 
     def discard_card(self):
-        action = {'type': 'discard_card', 'card_index': 0}
-        self.client_socket.send(pickle.dumps(action))
-        self.info_label.config(text="Card discarded, waiting for server update...")
-
-    def place_drawn_card(self, index):
-        action = {'type': 'place_card', 'card': self.temp_drawn_card, 'index': index}
-        self.client_socket.send(pickle.dumps(action))
-        self.temp_drawn_card = None
-        self.info_label.config(text="Placed card, waiting for server update...")
+        player_cards = self.get_player_cards()
         
+        if player_cards:
+            card_index = 0  # Discard the first card for simplicity
+            action = {'type': 'discard_card', 'card_index': card_index}
+            self.client_socket.send(pickle.dumps(action))
+            
+            del player_cards[card_index]
+            self.info_label.config(text="Card discarded, waiting for server update...")
+            self.update_interface(self.game_state)
+
+    def place_drawn_card_automatically(self):
+        player_cards = self.get_player_cards()
+        
+        action = {'type': 'place_card', 'card': self.temp_drawn_card}
+        self.client_socket.send(pickle.dumps(action))
+
+        player_cards.append(self.temp_drawn_card)
+        self.temp_drawn_card = None
+        self.info_label.config(text=f"Placed card at the end of the row.")
+        self.update_interface(self.game_state)
+
+    def get_player_cards(self):
+        return self.game_state.get('player1_cards', []) if self.player_number == 1 else self.game_state.get('player2_cards', [])
+
     def receive_game_state(self):
         while True:
             try:
@@ -111,10 +126,14 @@ class CardGameClient:
                 if data:
                     game_state = pickle.loads(data)
                     
+                    if game_state.get('type') == 'error':
+                        self.info_label.config(text=game_state['message'])
+                        continue
+                    
                     if game_state.get('type') == 'card_drawn':
                         self.temp_drawn_card = game_state['card']
-                        self.info_label.config(text=f"You drew: {self.temp_drawn_card}. Click an empty slot to place it.")
-                        continue
+                        self.place_drawn_card_automatically()
+                        return
                     
                     if 'player_number' in game_state:
                         self.player_number = game_state['player_number']
