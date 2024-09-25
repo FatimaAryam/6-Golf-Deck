@@ -24,6 +24,6 @@ def load_card_images(images_folder, size=(100, 140)):  # Set default size
 
 # Example usage
 if __name__ == "__main__":
-    images_folder = r"D:\Dell\Data\Fiverr\6_Golf_Card\images"  # Use raw string
+    images_folder = r"D:\Dell\Data\Fiverr\6_Golf_Card\6-Golf-Deck\images"  # Use raw string
     card_images = load_card_images(images_folder)
     print("Loaded card images:", card_images.keys())
