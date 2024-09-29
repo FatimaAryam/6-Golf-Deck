@@ -4,7 +4,7 @@ import pickle
 from game_logic import SixCardGolfGame
 
 class GameServer:
-    def __init__(self, host='192.168.10.6', port=7777):
+    def __init__(self, host='0.0.0.0', port=7777):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((host, port))
         self.server_socket.listen(5)
@@ -45,7 +45,7 @@ class GameServer:
             player_id = len(self.players) + 1
 
             self.players[player_id] = player_name
-            self.clients.append(client_socket)
+            self.clients.append((client_socket, player_id))
             print(f"Player {player_id}: {player_name} registered.")
 
             client_socket.send(pickle.dumps({"type": "assign_id", "player_id": player_id}))
@@ -62,9 +62,32 @@ class GameServer:
                         self.handle_draw_card(player_id)
                     elif action['type'] == 'discard_card':
                         self.handle_discard_card(player_id, action['card'])
+                    elif action['type'] == 'de-register':
+                        self.handle_de_register(player_id, client_socket)
+                        break
         except Exception as e:
             print(f"Error handling client: {e}")
-            client_socket.close()
+            self.handle_de_register(player_id, client_socket)
+
+    def handle_de_register(self, player_id, client_socket):
+        """Handle a player leaving the game."""
+        player_name = self.players.pop(player_id, None)
+        self.clients = [(client, pid) for client, pid in self.clients if pid != player_id]
+        
+        if player_name:
+            print(f"Player {player_id} ({player_name}) has left the game.")
+            # Notify other players
+            self.broadcast({"type": "player_left", "message": f"Player {player_name} has left the game."})
+        
+        # Close the client socket
+        client_socket.close()
+
+        # Check if the remaining players are still active
+        if len(self.players) < 2:
+            print("Not enough players to continue the game. The game will end.")
+            self.broadcast({"type": "final_result", "message": "Game Over! Not enough players remaining."})
+            self.server_socket.close()
+            exit()
 
     def start_game(self):
         print("Starting the game...")
@@ -86,27 +109,32 @@ class GameServer:
             if len(self.game_logic.players_cards[player_id]) == 0:
                 print(f"Player {player_id} has no more cards left.")
                 self.broadcast({"type": "game_over", "message": f"Player {player_id} has finished all cards!"})
+                
+                # Check if all players have finished their cards
                 if all(len(cards) == 0 for cards in self.game_logic.players_cards.values()):
                     scores = self.calculate_scores()
                     winner_id = min(scores, key=scores.get)
                     result_message = f"Game Over! Scores: {scores}. Player {winner_id} wins!"
                     self.broadcast({"type": "final_result", "message": result_message})
+                    self.server_socket.close()
+                    exit()
             else:
                 self.game_logic.end_turn()
                 self.broadcast_game_state()
 
     def calculate_scores(self):
+        """Calculate the scores for each player based on their remaining cards."""
         score_dict = {}
         for player_id, cards in self.game_logic.players_cards.items():
             score = 0
             for card in cards:
-                rank = card[:-1]
-                if rank in ['J', 'Q', 'K']:
+                rank = card[:-1]  # Extract the rank from card, e.g., '2' from '2H'
+                if rank in ['J', 'Q', 'K']:  # Jack, Queen, King each score 10 points
                     score += 10
-                elif rank == 'A':
+                elif rank == 'A':  # Ace scores 1 point
                     score += 1
                 else:
-                    score += int(rank)
+                    score += int(rank)  # All other cards score their numeric value
             score_dict[player_id] = score
         return score_dict
 
@@ -122,12 +150,12 @@ class GameServer:
         self.broadcast(game_state)
 
     def broadcast(self, message):
-        for client in self.clients:
+        for client, player_id in self.clients:
             try:
                 client.send(pickle.dumps(message))
             except Exception as e:
-                print(f"Error broadcasting message: {e}")
-                self.clients.remove(client)
+                print(f"Error broadcasting message to player {player_id}: {e}")
+                self.handle_de_register(player_id, client)
 
 if __name__ == "__main__":
     GameServer()

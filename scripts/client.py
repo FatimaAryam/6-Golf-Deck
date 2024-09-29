@@ -33,13 +33,17 @@ class CardGameClient:
                 self.client_socket.send(pickle.dumps({"type": "draw_card"}))
             elif command.startswith('discard'):
                 try:
-                    # Extract the card to be discarded
                     card = command.split(" ")[1].upper()
                     self.client_socket.send(pickle.dumps({"type": "discard_card", "card": card}))
                 except IndexError:
                     print("Please specify a card to discard (e.g., discard 5H)")
+            elif command == 'de-register':
+                self.client_socket.send(pickle.dumps({"type": "de-register"}))
+                print("You have left the game. Disconnecting...")
+                self.client_socket.close()
+                break
             else:
-                print("Invalid command. Use 'draw' or 'discard <card>'.")
+                print("Invalid command. Use 'draw', 'discard <card>', or 'de-register' to leave the game.")
 
     def receive_messages(self):
         """Handle incoming messages from the server."""
@@ -55,8 +59,10 @@ class CardGameClient:
                         print(message["message"])
                     elif message.get("type") == "final_result":
                         print(message["message"])
-            except ConnectionResetError:
-                print("Server disconnected")
+                    elif message.get("type") == "player_left":
+                        print(message["message"])
+            except (ConnectionResetError, OSError):
+                print("Disconnected from the server.")
                 break
 
     def display_game_state(self, game_state):
