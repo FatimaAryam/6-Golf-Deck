@@ -1,11 +1,11 @@
 import random
 
 class SixCardGolfGame:
-    def __init__(self):
+    def __init__(self, num_players=2):
+        self.num_players = num_players
         self.deck = self.create_deck()
         random.shuffle(self.deck)
-        self.player1_cards = self.deal_cards()
-        self.player2_cards = self.deal_cards()
+        self.players_cards = {i: self.deal_cards() for i in range(1, num_players + 1)}
         self.current_player = 1  # Player 1 starts
         self.discard_pile = [self.deck.pop()]  # Start the discard pile with one card
 
@@ -26,15 +26,15 @@ class SixCardGolfGame:
             return self.deck.pop()
         return None  # Deck is empty
 
-    def discard_card(self, player_cards, card):
+    def discard_card(self, player_id, card):
         """Discard a card from the player's hand."""
-        if card in player_cards:
-            player_cards.remove(card)
+        if card in self.players_cards[player_id]:
+            self.players_cards[player_id].remove(card)
             self.discard_pile.append(card)
 
     def end_turn(self):
         """Switch to the next player."""
-        self.current_player = 2 if self.current_player == 1 else 1
+        self.current_player = (self.current_player % self.num_players) + 1
 
     def get_top_discard_card(self):
         """Return the top card from the discard pile."""
