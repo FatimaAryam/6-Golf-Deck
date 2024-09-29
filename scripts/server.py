@@ -4,7 +4,7 @@ import pickle
 from game_logic import SixCardGolfGame
 
 class GameServer:
-    def __init__(self, host='0.0.0.0', port=7777):
+    def __init__(self, host='192.168.10.6', port=7777):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((host, port))
         self.server_socket.listen(5)
@@ -19,7 +19,6 @@ class GameServer:
         self.start_server()
 
     def start_server(self):
-        # Ask the server host to specify the number of players
         while True:
             try:
                 self.num_players = int(input("Enter the number of players (2, 3, or 4): "))
@@ -32,7 +31,6 @@ class GameServer:
 
         self.game_logic = SixCardGolfGame(self.num_players)
 
-        # Accept connections until the number of players is reached
         while len(self.players) < self.num_players:
             print("Waiting for players to connect...")
             client_socket, client_address = self.server_socket.accept()
@@ -50,15 +48,12 @@ class GameServer:
             self.clients.append(client_socket)
             print(f"Player {player_id}: {player_name} registered.")
 
-            # Inform the client of their player number
             client_socket.send(pickle.dumps({"type": "assign_id", "player_id": player_id}))
 
-            # If all players are registered, start the game
             if len(self.players) == self.num_players:
                 self.game_started = True
                 self.start_game()
 
-            # Handle player actions
             while True:
                 data = client_socket.recv(4096)
                 if data:
@@ -88,13 +83,32 @@ class GameServer:
             print(f"Player {player_id} discarded card: {card}")
             self.game_logic.discard_card(player_id, card)
             
-            # Check if the player has no more cards left
             if len(self.game_logic.players_cards[player_id]) == 0:
                 print(f"Player {player_id} has no more cards left.")
                 self.broadcast({"type": "game_over", "message": f"Player {player_id} has finished all cards!"})
+                if all(len(cards) == 0 for cards in self.game_logic.players_cards.values()):
+                    scores = self.calculate_scores()
+                    winner_id = min(scores, key=scores.get)
+                    result_message = f"Game Over! Scores: {scores}. Player {winner_id} wins!"
+                    self.broadcast({"type": "final_result", "message": result_message})
             else:
                 self.game_logic.end_turn()
                 self.broadcast_game_state()
+
+    def calculate_scores(self):
+        score_dict = {}
+        for player_id, cards in self.game_logic.players_cards.items():
+            score = 0
+            for card in cards:
+                rank = card[:-1]
+                if rank in ['J', 'Q', 'K']:
+                    score += 10
+                elif rank == 'A':
+                    score += 1
+                else:
+                    score += int(rank)
+            score_dict[player_id] = score
+        return score_dict
 
     def broadcast_game_state(self):
         game_state = {
@@ -104,7 +118,7 @@ class GameServer:
             "discard_pile": self.game_logic.get_top_discard_card(),
             "player_cards": self.game_logic.players_cards
         }
-        print(f"Broadcasting game state: {game_state}")  # Debug statement
+        print(f"Broadcasting game state: {game_state}")
         self.broadcast(game_state)
 
     def broadcast(self, message):

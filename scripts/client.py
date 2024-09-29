@@ -1,146 +1,92 @@
 import socket
 import threading
-import tkinter as tk
-from PIL import Image, ImageTk
 import pickle
-
-def load_card_images(folder):
-    card_images = {}
-    size = (80, 112)
-    suits = ['C', 'D', 'H', 'S']
-    ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
-    
-    for suit in suits:
-        for rank in ranks:
-            card_name = rank + suit
-            image_path = f"{folder}/{card_name}.png"
-            try:
-                card_image = Image.open(image_path).resize(size, Image.LANCZOS)
-                card_images[card_name] = ImageTk.PhotoImage(card_image)
-            except Exception as e:
-                print(f"Error loading image {card_name}: {e}")
-    
-    back_image = Image.open(f"{folder}/red_back.png").resize(size, Image.LANCZOS)
-    card_images['back'] = ImageTk.PhotoImage(back_image)
-    
-    return card_images
+import sys  # Import sys to read command-line arguments
 
 class CardGameClient:
-    def __init__(self, host='127.0.0.1', port=7777):
+    def __init__(self, host, port):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.connect((host, port))
-
-        self.root = tk.Tk()
-        self.root.title("Six Card Golf - Client")
-
-        # Load the card images (update the folder path to your images directory)
-        self.card_images = load_card_images(r"D:\Dell\Data\Fiverr\6_Golf_Card\6-Golf-Deck\images")
-
-        self.player_name = ""
-        self.player_number = None
-        self.game_state = None
-        self.create_registration_interface()
-
-        threading.Thread(target=self.receive_messages, daemon=True).start()
-        self.root.mainloop()
-
-    def create_registration_interface(self):
-        self.registration_frame = tk.Frame(self.root)
-        self.registration_frame.pack()
-
-        tk.Label(self.registration_frame, text="Enter your name:").pack()
-        self.name_entry = tk.Entry(self.registration_frame)
-        self.name_entry.pack()
-        tk.Button(self.registration_frame, text="Register", command=self.register_player).pack()
-
-    def register_player(self):
-        self.player_name = self.name_entry.get()
+        
+        # Connect to the specified host and port
+        try:
+            self.client_socket.connect((host, port))
+            print(f"Connected to game server at {host}:{port}")
+        except ConnectionRefusedError:
+            print(f"Could not connect to server at {host}:{port}. Make sure the server is running and try again.")
+            sys.exit(1)
+        
+        # Get player's name
+        self.player_name = input("Enter your name: ")
         self.client_socket.send(pickle.dumps({"type": "register", "name": self.player_name}))
-        self.registration_frame.destroy()
+        
+        # Start a thread to listen for server messages
+        threading.Thread(target=self.receive_messages, daemon=True).start()
 
-    def create_game_interface(self):
-        self.player_frame = tk.Frame(self.root)
-        self.player_frame.pack()
-        self.info_label = tk.Label(self.root, text="Waiting for other players...")
-        self.info_label.pack()
+        # Start the game loop for console input
+        self.run_console_game()
 
-        self.draw_button = tk.Button(self.root, text="Draw Card", command=self.draw_card)
-        self.draw_button.pack()
-        self.discard_button = tk.Button(self.root, text="Discard Card", command=self.discard_card)
-        self.discard_button.pack()
+    def run_console_game(self):
+        """Main loop for handling player commands."""
+        while True:
+            command = input("> ").strip().lower()
+            if command == 'draw':
+                self.client_socket.send(pickle.dumps({"type": "draw_card"}))
+            elif command.startswith('discard'):
+                try:
+                    # Extract the card to be discarded
+                    card = command.split(" ")[1].upper()
+                    self.client_socket.send(pickle.dumps({"type": "discard_card", "card": card}))
+                except IndexError:
+                    print("Please specify a card to discard (e.g., discard 5H)")
+            else:
+                print("Invalid command. Use 'draw' or 'discard <card>'.")
 
     def receive_messages(self):
+        """Handle incoming messages from the server."""
         while True:
             try:
                 data = self.client_socket.recv(4096)
                 if data:
                     message = pickle.loads(data)
-                    print(f"Received message: {message}")  # Debug statement
                     
-                    if message.get("type") == "register":
-                        self.create_game_interface()
-                    elif message.get("type") == "assign_id":
-                        self.player_number = message['player_id']
-                        print(f"Assigned player ID: {self.player_number}")
-                    elif message.get("type") == "start":
-                        self.info_label.config(text=message["message"])
-                    elif message.get("type") == "game_state":
-                        self.game_state = message
-                        self.update_interface(message)
+                    if message.get("type") == "game_state":
+                        self.display_game_state(message)
                     elif message.get("type") == "game_over":
-                        self.info_label.config(text=message["message"])
-                        self.draw_button.config(state=tk.DISABLED)
-                        self.discard_button.config(state=tk.DISABLED)
+                        print(message["message"])
+                    elif message.get("type") == "final_result":
+                        print(message["message"])
             except ConnectionResetError:
                 print("Server disconnected")
                 break
 
-    def update_interface(self, game_state):
-        if not game_state:
-            return
-
-        self.info_label.config(text=f"Player {game_state['current_player']}'s turn")
-
-        # Display player's cards and update other elements
-        player_cards = game_state['player_cards'].get(self.player_number)
-        if player_cards:
-            self.display_player_cards(player_cards)
-
-    def display_player_cards(self, player_cards):
-        for widget in self.player_frame.winfo_children():
-            widget.destroy()
+    def display_game_state(self, game_state):
+        """Display the current game state in the console."""
+        current_player = game_state["current_player"]
+        print(f"\n--- Current Game State ---")
+        print(f"Current Player's Turn: Player {current_player}")
         
-        for card in player_cards:
-            if card in self.card_images:
-                card_image = self.card_images[card]
-                label = tk.Label(self.player_frame, image=card_image)
-                label.image = card_image
-                label.pack(side=tk.LEFT)
-            else:
-                print(f"Card image not found for {card}")
-
-    def draw_card(self):
-        if self.game_state['current_player'] == self.player_number:
-            action = {'type': 'draw_card'}
-            self.client_socket.send(pickle.dumps(action))
-            self.info_label.config(text="You drew a card, waiting for server update...")
-        else:
-            self.info_label.config(text="It's not your turn to draw a card!")
-
-    def discard_card(self):
-        if self.game_state['current_player'] == self.player_number:
-            player_cards = self.game_state.get('player_cards', {}).get(self.player_number, [])
-            
-            if player_cards:
-                card_index = 0  # For simplicity, discard the first card
-                discarded_card = player_cards[card_index]
-                action = {'type': 'discard_card', 'card': discarded_card}
-                self.client_socket.send(pickle.dumps(action))
-
-                self.info_label.config(text="Card discarded, waiting for server update...")
-                self.update_interface(self.game_state)
-        else:
-            self.info_label.config(text="It's not your turn to discard a card!")
+        # Display each player's cards
+        for player_id, cards in game_state["player_cards"].items():
+            card_display = ', '.join(cards) if cards else "No cards left"
+            print(f"Player {player_id} ({game_state['players'][player_id]}): {card_display}")
+        
+        # Show the top card of the discard pile
+        top_discard = game_state.get("discard_pile", "Empty")
+        print(f"Top card on discard pile: {top_discard}")
+        print("------------------------")
 
 if __name__ == "__main__":
-    CardGameClient()
+    # Check if correct number of arguments is provided
+    if len(sys.argv) != 3:
+        print("Usage: python client.py <server_ip> <port>")
+        sys.exit(1)
+
+    server_ip = sys.argv[1]
+    try:
+        server_port = int(sys.argv[2])
+    except ValueError:
+        print("Invalid port number. Port must be an integer.")
+        sys.exit(1)
+
+    # Start the client
+    CardGameClient(server_ip, server_port)
