@@ -1,4 +1,3 @@
-
 import socket
 import threading
 import pickle
@@ -16,9 +15,29 @@ class CardGameClient:
             print(f"Could not connect to server at {host}:{port}. Make sure the server is running and try again.")
             sys.exit(1)
 
-        # Get player's name
-        self.player_name = input("Enter your name: ")
-        self.client_socket.send(pickle.dumps({"type": "register", "name": self.player_name}))
+        # Get player's details
+        while True:
+            self.player_name = input("Enter your name (max 15 chars, alphabetic only): ")
+            self.ipv4 = input("Enter your IPv4 address: ")
+            self.t_port = int(input("Enter your tracker port (7500-7999): "))
+            self.p_port = int(input("Enter your player port (7500-7999): "))
+
+            self.client_socket.send(pickle.dumps({
+                "type": "register",
+                "name": self.player_name,
+                "ipv4": self.ipv4,
+                "t_port": self.t_port,
+                "p_port": self.p_port
+            }))
+
+            response = pickle.loads(self.client_socket.recv(1024))
+            if response["status"] == "SUCCESS":
+                print("Registration successful!")
+                break
+            else:
+                print(f"Registration failed: {response['reason']}")
+                # Ask the user to re-enter the details
+                continue
 
         # Start a thread to listen for server messages
         threading.Thread(target=self.receive_messages, daemon=True).start()
@@ -31,10 +50,8 @@ class CardGameClient:
             command = input("Enter a command (query_players, query_games, deregister): ").strip()
 
             if command in ["query_players", "query_games"]:
-                # Send command to server
                 self.client_socket.send(pickle.dumps({"type": command}))
             elif command == "deregister":
-                # Send deregister command to server
                 self.client_socket.send(pickle.dumps({"type": "deregister", "name": self.player_name}))
             else:
                 print("Invalid command. Try again.")
