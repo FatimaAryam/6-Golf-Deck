@@ -47,12 +47,35 @@ class CardGameClient:
 
     def run_console_input(self):
         while True:
-            command = input("Enter a command (query_players, query_games, deregister): ").strip()
+            command = input("Enter a command (query_players, query_games, deregister, start_game <player> <n> <holes>): ").strip()
 
             if command in ["query_players", "query_games"]:
                 self.client_socket.send(pickle.dumps({"type": command}))
             elif command == "deregister":
                 self.client_socket.send(pickle.dumps({"type": "deregister", "name": self.player_name}))
+            elif command.startswith("start_game"):
+                parts = command.split()
+                if len(parts) != 4:
+                    print("Invalid command format. Use: start_game <player> <n> <holes>")
+                    continue
+
+                player = parts[1]
+                try:
+                    n = int(parts[2])
+                    holes = int(parts[3])
+                    if not (1 <= n <= 3) or not (1 <= holes <= 9):
+                        print("Invalid values for n or holes. Ensure 1 ≤ n ≤ 3 and 1 ≤ holes ≤ 9.")
+                        continue
+                except ValueError:
+                    print("Both n and holes must be integers.")
+                    continue
+
+                self.client_socket.send(pickle.dumps({
+                    "type": "start_game",
+                    "player": player,
+                    "n": n,
+                    "holes": holes
+            }))
             else:
                 print("Invalid command. Try again.")
 
