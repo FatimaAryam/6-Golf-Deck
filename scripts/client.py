@@ -46,12 +46,18 @@ class CardGameClient:
 
     def run_console_input(self):
         while True:
-            command = input("Enter a command (query_players, query_games, end <game-id> <player>, deregister, start_game <player> <n> <holes>): ").strip()
+            command = input("Enter a command (query_players, query_games, deregister <player name>, start_game <player> <n> <holes>): ").strip()
 
             if command in ["query_players", "query_games"]:
                 self.client_socket.send(pickle.dumps({"type": command}))
-            elif command == "deregister":
-                self.client_socket.send(pickle.dumps({"type": "deregister", "name": self.player_name}))
+            elif command.startswith("deregister"):
+                parts = command.split()
+                if len(parts) != 2:
+                    print("Invalid command format. Use: deregister <player name>")
+                    continue
+
+                player_name = parts[1]
+                self.client_socket.send(pickle.dumps({"type": "deregister", "name": player_name}))
             elif command.startswith("start_game"):
                 parts = command.split()
                 if len(parts) != 4:

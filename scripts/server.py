@@ -45,7 +45,7 @@ class GameServer:
                 elif command_type == "start_game":
                     player = message.get("player")
                     n = message.get("n")
-                    holes = message.get("holes", 9)  # Default to 9 if not specified
+                    holes = message.get("holes", 9)
                 
                     response = self.start_game(player, n, holes)
                     client_socket.send(pickle.dumps(response))
@@ -56,6 +56,10 @@ class GameServer:
                     game_id = message.get("game_id")
                     player = message.get("player")
                     response = self.end_game(game_id, player)
+                    client_socket.send(pickle.dumps(response))
+                elif command_type == "deregister":
+                    player_name = message.get("name")
+                    response = self.deregister_player(player_name)
                     client_socket.send(pickle.dumps(response))
 
             except Exception as e:
@@ -78,6 +82,22 @@ class GameServer:
             "status": "free"
         }
         print(f"Player {player_name} registered with IP {ipv4}, T-port {t_port}, P-port {p_port}.")
+        return {"status": "SUCCESS"}
+
+    def deregister_player(self, player_name):
+        if player_name not in self.players:
+            return {"status": "FAILURE", "reason": "Player not registered."}
+
+        # Check if the player is the dealer of any ongoing game
+        for game_id, game_info in self.games.items():
+            if player_name == game_info["dealer"]:
+                return {"status": "FAILURE", "reason": "Player is the dealer of an ongoing game."}
+            elif player_name in game_info["players"]:
+                return {"status": "FAILURE", "reason": "Player is involved in an ongoing game."}
+
+        # Remove the player
+        del self.players[player_name]
+        print(f"Player {player_name} deregistered.")
         return {"status": "SUCCESS"}
 
     def query_players(self):
