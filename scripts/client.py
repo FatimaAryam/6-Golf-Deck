@@ -46,7 +46,7 @@ class CardGameClient:
 
     def run_console_input(self):
         while True:
-            command = input("Enter a command (query_players, query_games, deregister, start_game <player> <n> <holes>): ").strip()
+            command = input("Enter a command (query_players, query_games, end <game-id> <player>, deregister, start_game <player> <n> <holes>): ").strip()
 
             if command in ["query_players", "query_games"]:
                 self.client_socket.send(pickle.dumps({"type": command}))
@@ -74,6 +74,20 @@ class CardGameClient:
                     "player": player,
                     "n": n,
                     "holes": holes
+                }))
+            elif command.startswith("end"):
+                parts = command.split()
+                if len(parts) != 3:
+                    print("Invalid command format. Use: end <game-id> <player>")
+                    continue
+
+                game_id = parts[1]
+                player = parts[2]
+
+                self.client_socket.send(pickle.dumps({
+                    "type": "end",
+                    "game_id": game_id,
+                    "player": player
                 }))
             else:
                 print("Invalid command. Try again.")

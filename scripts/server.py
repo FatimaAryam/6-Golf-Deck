@@ -12,7 +12,6 @@ class GameServer:
         self.server_socket.listen(5)
         print(f"Server started on {host}:{port}")
 
-        self.clients = {}
         self.players = {}
         
         # Start accepting client connections
@@ -52,6 +51,11 @@ class GameServer:
                     client_socket.send(pickle.dumps(response))
                 elif command_type == "query_games":
                     response = self.query_games()
+                    client_socket.send(pickle.dumps(response))
+                elif command_type == "end":
+                    game_id = message.get("game_id")
+                    player = message.get("player")
+                    response = self.end_game(game_id, player)
                     client_socket.send(pickle.dumps(response))
 
             except Exception as e:
@@ -134,6 +138,24 @@ class GameServer:
             "game_id": game_id,
             "players": player_info
         }
+
+    def end_game(self, game_id, player):
+        if game_id not in self.games:
+            print(f"FAILURE: Game identifier '{game_id}' not found.")
+            return {"status": "FAILURE", "reason": "Game identifier not found."}
+        
+        game_info = self.games[game_id]
+        if game_info["dealer"] != player:
+            print(f"FAILURE: Player '{player}' is not the dealer for game '{game_id}'.")
+            return {"status": "FAILURE", "reason": "Player is not the dealer."}
+        
+        # Remove the game and update player statuses
+        for p in game_info["players"]:
+            self.players[p]["status"] = "free"
+        del self.games[game_id]
+        
+        print(f"SUCCESS: Game '{game_id}' ended by dealer '{player}'.")
+        return {"status": "SUCCESS"}
 
     def generate_game_id(self):
         return f"game_{len(self.games) + 1}"
