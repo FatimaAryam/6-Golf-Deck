@@ -4,9 +4,8 @@ import pickle
 import random
 from game_logic import SixCardGolfGame
 
-
 class GameServer:
-    def __init__(self, host='192.168.1.165', port=7500):
+    def __init__(self, host='192.168.1.160', port=7500):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((host, port))
         self.games = {}
@@ -15,10 +14,7 @@ class GameServer:
 
         self.clients = {}
         self.players = {}
-        self.game_started = False
-        self.num_players = 0
-        self.game_logic = None
-
+        
         # Start accepting client connections
         self.start_server()
 
@@ -47,7 +43,6 @@ class GameServer:
                 elif command_type == "query_players":
                     response = self.query_players()
                     client_socket.send(pickle.dumps(response))
-
                 elif command_type == "start_game":
                     player = message.get("player")
                     n = message.get("n")
@@ -55,16 +50,14 @@ class GameServer:
                 
                     response = self.start_game(player, n, holes)
                     client_socket.send(pickle.dumps(response))
-
-
-                
-                # Other command handling...
+                elif command_type == "query_games":
+                    response = self.query_games()
+                    client_socket.send(pickle.dumps(response))
 
             except Exception as e:
                 print(f"Error handling client message: {e}")
                 client_socket.close()
                 break
-    
 
     def register_player(self, player_name, ipv4, t_port, p_port):
         if len(player_name) > 15 or not player_name.isalpha():
@@ -79,14 +72,29 @@ class GameServer:
             "t_port": t_port,
             "p_port": p_port,
             "status": "free"
-    }
+        }
         print(f"Player {player_name} registered with IP {ipv4}, T-port {t_port}, P-port {p_port}.")
         return {"status": "SUCCESS"}
 
     def query_players(self):
         player_info = list(self.players.items())
         return {"status": len(player_info), "players": player_info}
-    
+
+    def query_games(self):
+        if not self.games:
+            return {"status": 0, "games": []}
+        
+        ongoing_games = []
+        for game_id, game_info in self.games.items():
+            game_details = {
+                "game_id": game_id,
+                "dealer": game_info["dealer"],
+                "players": game_info["players"]
+            }
+            ongoing_games.append(game_details)
+        
+        return {"status": len(ongoing_games), "games": ongoing_games}
+
     def start_game(self, player, n, holes):
         if player not in self.players:
             return {"status": "FAILURE", "reason": "Player is not registered."}

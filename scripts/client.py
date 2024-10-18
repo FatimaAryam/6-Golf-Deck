@@ -36,7 +36,6 @@ class CardGameClient:
                 break
             else:
                 print(f"Registration failed: {response['reason']}")
-                # Ask the user to re-enter the details
                 continue
 
         # Start a thread to listen for server messages
@@ -75,7 +74,7 @@ class CardGameClient:
                     "player": player,
                     "n": n,
                     "holes": holes
-            }))
+                }))
             else:
                 print("Invalid command. Try again.")
 
